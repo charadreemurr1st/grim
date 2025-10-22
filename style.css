@@ -44,5 +44,14 @@ html,body,#app{height:100%;margin:0;background:linear-gradient(180deg,var(--bg),
 #combat-log{max-height:90px;overflow:auto;margin-top:8px}
 .mini{padding:8px}
 
+.act-btn, .item-btn { padding:8px 10px; background:#fff; border:2px solid #111; border-radius:6px; cursor:pointer; font-family:"Press Start 2P",monospace; font-size:12px }
+.act-btn.check { background:linear-gradient(180deg,#ffd27f,#ffb36b); }
+.act-btn:hover, .item-btn:hover { transform:translateY(-1px); }
+
 footer{display:flex;gap:8px;justify-content:center;padding:18px}
 small{color:var(--muted)}
+
+#choice-container{display:flex;gap:8px;margin-top:8px}
+#choice-container .btn{font-family:"Press Start 2P",monospace;padding:10px 12px}
+
+#save-indicator{background:rgba(0,0,0,0.08);padding:4px 8px;border-radius:6px}

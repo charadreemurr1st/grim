@@ -18,12 +18,19 @@
   const resetBtn = document.getElementById('reset-game');
   const saveBtn = document.getElementById('save-game');
   const loadBtn = document.getElementById('load-game');
+  const dbgEnc0 = document.getElementById('dbg-enc-0');
+  const dbgEnc1 = document.getElementById('dbg-enc-1');
+  const dbgEnc2 = document.getElementById('dbg-enc-2');
+  const dbgHeal = document.getElementById('dbg-heal');
+  const dbgItem = document.getElementById('dbg-add-item');
   const dialogueBox = document.getElementById('dialogue-box');
   const dialogueText = document.getElementById('dialogue-text');
   const nextBtn = document.getElementById('next-btn');
+  const dialogueControls = document.getElementById('dialogue-controls');
   const stateLabel = document.getElementById('state-label');
   const hud = document.getElementById('hud');
   const battleUI = document.getElementById('battle-ui');
+  const saveIndicator = document.getElementById('save-indicator');
   const actionButtons = document.querySelectorAll('.action');
   const enemyNameLabel = document.getElementById('enemy-name');
   const enemyHPFill = document.getElementById('enemy-hp');
@@ -96,12 +103,13 @@
     intro: [
       "THE CHRONICLES OF GRIM GREASER",
       "You are Grim. A kid in Ridgewood High with a talent for trouble and snacks.",
-      "You notice something's off — shadows moving where they shouldn't."
+      "The halls whisper. Something that doesn't belong is peeking through the cracks."
     ],
     hallway: [
-      "* Zoey fusses about her papers.",
-      "* Zack is suspiciously close to the vending machine.",
-      "Mia: Grim! I baked something for you..."
+      "* Zoey fusses about her papers. She's worried but trying to hold it together.",
+      "* Zack is suspiciously close to the vending machine, plotting his next snack heist.",
+      "Mia: Grim! I baked something for you... (the air feels a touch colder.)",
+      "You can choose where to go: maybe the library or the hall."
     ],
     endingPacifist: [
       "You chose mercy and kindness. Ridgewood breathes easier.",
@@ -129,7 +137,9 @@
       mercyThreshold: 0.2, // percent
       acts: [
         { id: 'joke', label: 'Tell a joke', outcome: (e) => ({ text:`The ghost giggles. It seems calmer.`, mercy:true }) },
-        { id: 'compliment', label: 'Compliment', outcome: (e) => ({ text:`It drifts closer, listening.`, mercy:false }) }
+        { id: 'compliment', label: 'Compliment', outcome: (e) => ({ text:`It drifts closer, listening.`, mercy:false }) },
+        { id: 'read', label: 'Read a book', outcome: (e) => ({ text:`You read aloud from a silly tale. The ghost seems comforted.`, mercy:true }) },
+        { id: 'quiet', label: 'Be quiet', outcome: (e) => ({ text:`Silence settles — the ghost seems contemplative.`, mercy:false }) }
       ],
       dialog: ["A ghost drifts from the dusty shelves!"],
       flavor: "A lost student who can't find her notes."
@@ -145,7 +155,9 @@
       mercyThreshold: 0.22,
       acts: [
         { id:'showlight', label:'Shine Light', outcome: (e) => ({ text:`You flash a light — the shadow recoils.`, mercy:false }) },
-        { id:'humm', label:'Humm a tune', outcome:(e)=> ({ text:`The wraith seems distracted.`, mercy:true }) }
+        { id:'humm', label:'Humm a tune', outcome:(e)=> ({ text:`The wraith seems distracted.`, mercy:true }) },
+        { id:'poke', label:'Poke', outcome:(e)=> ({ text:`You poke the shadow. It sizzles and loses focus.`, mercy:false }) },
+        { id:'taunt', label:'Taunt', outcome:(e)=> ({ text:`You throw a taunt. The wraith grows angrier — but you're more confident.`, mercy:false }) }
       ],
       dialog: ["A writhing shadow stalks you!", "It feeds on fear..."] ,
       flavor: "Something formed from forgotten anger."
@@ -161,7 +173,9 @@
       mercyThreshold: 0.28,
       acts: [
         { id:'talk', label:'Talk', outcome:(e)=> ({ text:`You talk to Mia about feelings. She falters.`, mercy:false }) },
-        { id:'remin', label:'Reminisce', outcome:(e)=> ({ text:`A memory surfaces — Mia looks away.`, mercy:true }) }
+        { id:'remin', label:'Reminisce', outcome:(e)=> ({ text:`A memory surfaces — Mia looks away.`, mercy:true }) },
+        { id:'gift', label:'Offer snack', outcome:(e)=> ({ text:`You offer your snack. Mia is taken aback, then softens.`, mercy:true }) },
+        { id:'apologize', label:'Apologize', outcome:(e)=> ({ text:`You apologize for past slights. Mia pauses, unsure.`, mercy:false }) }
       ],
       dialog: [
         "Mia: You can't avoid me forever, Grim!",
@@ -171,11 +185,24 @@
     }
   ];
 
+  // branching exploration map: each node has a description and available encounter indices
+  const branches = {
+    start: {
+      desc: 'Hallway outside the classroom. Where will you go?',
+      choices: [ { label: 'Library', encounter: 0 }, { label: 'Hallway', encounter: 1 }, { label: 'Skip class', encounter: null } ]
+    }
+  };
+
+  let currentBranch = 'start';
+  let rebellion = 0; // tracks skipping/class rebellion choices for route consequences
+
   // persist a working copy of encounters so we can reset per-save
+  // We'll keep a lightweight copy of encounter states but reconstruct act functions from baseEncounters by id when loading
   let encounters = JSON.parse(JSON.stringify(baseEncounters));
 
   // player state
   const player = { maxHp:100, hp:100, level:1, exp:0, items: [ { id:'snack', name:'Snack', heal:20, qty:2 } ] };
+
 
   // route tracking
   let killsCount = 0;
@@ -226,7 +253,17 @@
       dialogueText.textContent = currentDialogue[dialogueIndex];
     } else {
       if (state === 'intro') { currentDialogue = [...story.hallway]; dialogueIndex=0; setState('exploration'); updateDialogue(); }
-      else if (state === 'exploration') { prepareEncounter(currentEncounterIndex); }
+      else if (state === 'exploration') {
+        // present choices the first time the exploration node finishes
+        if (currentEncounterIndex === 0) {
+          const node = branches[currentBranch];
+          if (node && node.choices) {
+            presentChoices(node.choices.map(c=>({ label: c.label, onChoose: ()=>{ if (c.encounter===null) { rebellion++; const idx = Math.random()<0.5?0:1; prepareEncounter(idx); } else { prepareEncounter(c.encounter); } } })));
+          } else { prepareEncounter(currentEncounterIndex); }
+        } else {
+          prepareEncounter(currentEncounterIndex);
+        }
+      }
       else if (state === 'battleStart') { setState('battle'); startBattleLoop(); }
       else if (state === 'victory') { currentEncounterIndex++; if (currentEncounterIndex < encounters.length) { currentDialogue = ['After a short rest, you continue...']; dialogueIndex=0; setState('exploration'); updateDialogue(); } else { // ending by route
           decideEnding(); } }
@@ -240,6 +277,13 @@
   if (saveBtn) saveBtn.addEventListener('click', ()=>{ saveGame(); playSfx('ui-click'); });
   if (loadBtn) loadBtn.addEventListener('click', ()=>{ loadGame(); playSfx('ui-click'); });
 
+  // debug wiring
+  if (dbgEnc0) dbgEnc0.addEventListener('click', ()=>{ resetAll(); currentEncounterIndex = 0; prepareEncounter(0); });
+  if (dbgEnc1) dbgEnc1.addEventListener('click', ()=>{ resetAll(); currentEncounterIndex = 1; prepareEncounter(1); });
+  if (dbgEnc2) dbgEnc2.addEventListener('click', ()=>{ resetAll(); currentEncounterIndex = 2; prepareEncounter(2); });
+  if (dbgHeal) dbgHeal.addEventListener('click', ()=>{ player.hp = player.maxHp; updatePlayerBar(); appendCombatLog('Healed to full.'); });
+  if (dbgItem) dbgItem.addEventListener('click', ()=>{ const slot = player.items.find(i=>i.id==='snack'); if (slot) slot.qty++; else player.items.push({id:'snack',name:'Snack',heal:20,qty:1}); appendCombatLog('Added a Snack.'); });
+
   function prepareEncounter(idx) {
     enemy = JSON.parse(JSON.stringify(encounters[idx]));
     currentDialogue = enemy.dialog.slice();
@@ -249,6 +293,25 @@
     if (enemyHPFill) enemyHPFill.style.width = `${(enemy.hp/enemy.maxHp)*100}%`;
     if (playerHPFill) playerHPFill.style.width = `${(player.hp/player.maxHp)*100}%`;
     if (enemyNameLabel) enemyNameLabel.textContent = enemy.name.toUpperCase();
+  }
+
+  // simple choices UI for exploration
+  function presentChoices(choices) {
+    if (!dialogueBox || !dialogueText || !dialogueControls) return;
+    // hide next button
+    const next = document.getElementById('next-btn'); if (next) next.style.display='none';
+    // create choice buttons container
+    let container = document.getElementById('choice-container');
+    if (!container) { container = document.createElement('div'); container.id='choice-container'; container.style.display='flex'; container.style.gap='8px'; container.style.marginTop='8px'; dialogueBox.appendChild(container); }
+    container.innerHTML='';
+    choices.forEach(c=>{
+      const b = document.createElement('button'); b.className='btn'; b.textContent=c.label; b.addEventListener('click',()=>{ playSfx('ui-click'); container.innerHTML=''; if (next) next.style.display='inline-block'; c.onChoose(); }); container.appendChild(b);
+    });
+  }
+
+  // helper: find base encounter by id (to reconstruct act functions)
+  function findBaseEncounter(id) {
+    return baseEncounters.find(e => e.id === id) || null;
   }
 
   // Action button wiring (Fight, Act, Item, Mercy) — existing buttons should have data-action
@@ -267,13 +330,16 @@
     if (!actsList || !menuInfo) return;
     actsList.innerHTML = '';
     menuInfo.textContent = 'Choose an ACT to try to befriend or weaken the enemy.';
-    enemy.acts.forEach(a => {
+    // Ensure enemy acts have functional outcomes — if we loaded from save they may be simple descriptors, so patch from baseEncounters
+    const base = findBaseEncounter(enemy.id);
+    const actsToUse = base && base.acts ? base.acts : enemy.acts;
+    actsToUse.forEach(a => {
       const b = document.createElement('button');
       b.className = 'act-btn';
       b.textContent = a.label;
       b.addEventListener('click',()=>{
         playSfx('act');
-        const out = a.outcome(enemy);
+        const out = (typeof a.outcome === 'function') ? a.outcome(enemy) : { text: a.note || 'It had an effect.', mercy:false };
         appendCombatLog(out.text);
         if (out.mercy) { enemy._canMercy = true; appendCombatLog(`${enemy.name} looks more merciful...`); }
         closeMenus();
@@ -306,9 +372,15 @@
       b.addEventListener('click',()=>{
         if (it.qty <= 0) { appendCombatLog('No more of that item.'); return; }
         playSfx('item');
-        player.hp = Math.min(player.maxHp, player.hp + it.heal);
+        if (it.id === 'shield') {
+          // shield grants temporary defense boost for next enemy attack
+          player._tempDef = (player._tempDef || 0) + 4;
+          appendCombatLog('Used Shield: defense increased briefly.');
+        } else {
+          player.hp = Math.min(player.maxHp, player.hp + it.heal);
+          appendCombatLog(`Used ${it.name}: +${it.heal} HP`);
+        }
         it.qty--;
-        appendCombatLog(`Used ${it.name}: +${it.heal} HP`);
         updatePlayerBar();
         closeMenus();
         setTimeout(()=>{ startEnemyAttack(); }, 600);
@@ -337,28 +409,40 @@
 
   // Fight minigame — opens attack pattern where player tries to hit enemy with bullets (optional: keep simple)
   function enterFightMinigame() {
+    // Enter a short attack window where player's soul can hit bullets to turn them into damage
     battlePhase = 'attackpattern';
     playSfx('fight-hit');
-    appendCombatLog('You choose to FIGHT — dodge and collide with projectiles to deal damage.');
+    appendCombatLog('You choose to FIGHT — move your SOUL to hit the glowing cores to deal damage.');
     bullets = [];
-    const patternCount = 8 + Math.floor(enemy.attack/3);
+    const patternCount = 10 + Math.floor(enemy.attack/2);
     for (let i=0;i<patternCount;i++) {
-      bullets.push({ x: canvas.width/2, y: canvas.height/2, vx:(Math.random()-0.5)*6, vy:(Math.random()-0.5)*6, r:6 + Math.random()*8, color:'#ff8888' });
+      const angle = Math.random()*Math.PI*2;
+      const speed = 1 + Math.random()*2.2;
+      bullets.push({ x: Math.random()*canvas.width, y: Math.random()*canvas.height*0.6 + 40, vx:Math.cos(angle)*speed, vy:Math.sin(angle)*speed, r:6 + Math.random()*8, color:'#ff8888', hits:0 });
     }
-    // brief window to 'land hits'
-    const fightDuration = 1400 + Math.random()*600;
-    setTimeout(()=>{
-      const hits = Math.max(1, Math.floor(Math.random() * 4) + Math.floor(bullets.length/10));
-      const rawDmg = 6 + Math.floor(Math.random()*18);
-      const dmg = Math.max(1, rawDmg + hits - enemy.defense);
-      enemy.hp = Math.max(0, enemy.hp - dmg);
-      appendCombatLog(`You dealt ${dmg} damage!`);
-      updateEnemyBar();
-      bullets = [];
-      battlePhase = 'menu';
-      if (enemy.hp <= 0) { onVictory(false); }
-      else { setTimeout(()=> startEnemyAttack(), 450); }
-    }, fightDuration);
+    // fight runs for a short duration; during this time collisions are checked in drawScene
+    const fightDuration = 1200 + Math.random()*800;
+    const fightStart = performance.now();
+    const fightTick = () => {
+      const now = performance.now();
+      // compute damage from bullets that were 'struck' by soul (we mark hits on bullets)
+      if (now - fightStart >= fightDuration) {
+        // count bullets that were hit
+        const hitCount = bullets.reduce((s,b)=> s + (b._hit?1:0), 0);
+        const rawDmg = 6 + Math.floor(Math.random()*18);
+        const dmg = Math.max(1, rawDmg + hitCount - enemy.defense);
+        enemy.hp = Math.max(0, enemy.hp - dmg);
+        appendCombatLog(`You dealt ${dmg} damage! (${hitCount} hits)`);
+        updateEnemyBar();
+        bullets = [];
+        battlePhase = 'menu';
+        if (enemy.hp <= 0) { onVictory(false); }
+        else { setTimeout(()=> startEnemyAttack(), 450); }
+        return;
+      }
+      requestAnimationFrame(fightTick);
+    };
+    requestAnimationFrame(fightTick);
   }
 
   // Enemy attack patterns
@@ -369,21 +453,68 @@
     attackActive = true;
     playSfx('enemy-attack');
     bullets = [];
-    const patternCount = Math.min(18, Math.floor(enemy.attack/2)+6);
+    const patternCount = Math.min(26, Math.floor(enemy.attack/2)+8);
+    // create downward falling bullets and some radial bursts
     for (let i=0;i<patternCount;i++) {
-      const angle = (i/patternCount)*Math.PI*2 + (Math.random()*0.8-0.4);
-      const speed = 1.2 + Math.random()*2 + (enemy.attack/20);
-      bullets.push({ x: Math.random()*canvas.width, y: -20 - Math.random()*120, vx:Math.cos(angle)*speed, vy:Math.sin(angle)*speed + 0.4, r:6+Math.random()*8, color:'#ff4d4d' });
+      if (i % 5 === 0) {
+        // radial burst from top-center
+        const sx = canvas.width/2 + (Math.random()-0.5)*80;
+        const sy = 60 + Math.random()*40;
+        const spread = 6 + Math.floor(Math.random()*6);
+        for (let j=0;j<spread;j++) {
+          const angle = (j/spread)*Math.PI*2 + (Math.random()*0.4-0.2);
+          const speed = 1.2 + Math.random()*2 + (enemy.attack/30);
+          bullets.push({ x:sx, y:sy, vx:Math.cos(angle)*speed, vy:Math.sin(angle)*speed, r:6+Math.random()*6, color:'#ff4d4d' });
+        }
+      } else {
+        const x = 40 + Math.random()*(canvas.width-80);
+        const y = -20 - Math.random()*120;
+        const tx = soul.x + (Math.random()-0.5)*120;
+        const ty = soul.y - 40 + (Math.random()-0.5)*40;
+        const angle = Math.atan2(ty - y, tx - x);
+        const speed = 1.2 + Math.random()*2 + (enemy.attack/30);
+        bullets.push({ x, y, vx:Math.cos(angle)*speed, vy:Math.sin(angle)*speed, r:6+Math.random()*8, color:'#ff4d4d' });
+      }
     }
-    // run for a while
-    setTimeout(()=>{
-      const hits = checkSoulCollisions();
-      const dmg = Math.min(player.hp, Math.max(0, Math.floor((enemy.attack/6)*hits)));
-      if (dmg>0) { player.hp = Math.max(0, player.hp - dmg); playSfx('player-hurt'); appendCombatLog(`${enemy.name} deals ${dmg} damage.`); updatePlayerBar(); }
-      else { playSfx('ui-click'); appendCombatLog('You dodged the attack!'); }
-      bullets=[]; attackActive=false; battlePhase='menu';
-      if (player.hp <=0) { setTimeout(()=>{ setState('gameover'); playSfx('gameover'); currentDialogue = ['You fell down...','This is not necessarily the end.']; dialogueIndex=0; dialogueBox.classList.remove('hidden'); battleUI.classList.add('hidden'); }, 600); }
-    }, 1600 + Math.random()*1000);
+    // run for a while — during this time collisions are checked each frame
+    const start = performance.now();
+    const duration = 1400 + Math.random()*900;
+    const tick = () => {
+      const now = performance.now();
+      // check collisions and apply damage immediately for bullets that hit the soul
+      for (let i=bullets.length-1;i>=0;i--) {
+        const b = bullets[i];
+        const dx=b.x - soul.x; const dy=b.y - soul.y; const d=Math.sqrt(dx*dx+dy*dy);
+        if (d < b.r + soul.size) {
+          // damage based on enemy.attack and bullet size, reduced by temporary defense
+          const base = Math.max(1, Math.floor((enemy.attack/8) + (b.r/6)));
+          const def = player._tempDef || 0;
+          const dmg = Math.max(0, base - def);
+          if (dmg > 0) {
+            player.hp = Math.max(0, player.hp - dmg);
+            playSfx('player-hurt'); appendCombatLog(`${enemy.name} hits you for ${dmg} HP.`);
+            updatePlayerBar();
+          } else {
+            appendCombatLog('Your defense absorbed the hit!');
+          }
+          bullets.splice(i,1);
+        }
+      }
+      if (now - start >= duration) {
+  // end attack
+  attackActive=false; battlePhase='menu'; bullets=[];
+  // clear temporary defense now that attack ended
+  if (player._tempDef) { player._tempDef = 0; appendCombatLog('Shield effect faded.'); }
+        if (player.hp <= 0) {
+          setTimeout(()=>{ setState('gameover'); playSfx('gameover'); currentDialogue = ['You fell down...','This is not necessarily the end.']; dialogueIndex=0; if (dialogueBox) dialogueBox.classList.remove('hidden'); if (battleUI) battleUI.classList.add('hidden'); }, 600);
+          return;
+        }
+        // end of attack — resume menu
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
   }
 
   function checkSoulCollisions() {
@@ -404,6 +535,13 @@
     }
     player.exp += enemy.exp;
     player.hp = Math.min(player.maxHp, player.hp + (mercied?8:12));
+    // small level-up: every 100 EXP
+    if (player.exp >= player.level * 100) {
+      player.level++;
+      player.maxHp += 10;
+      player.hp = Math.min(player.maxHp, player.hp + 10);
+      appendCombatLog(`LEVEL UP! You are now level ${player.level}. HP increased.`);
+    }
     updatePlayerBar();
     setState('victory');
     currentDialogue = [ enemy.name + (mercied? ' fades away peacefully...' : ' collapses...') ];
@@ -413,8 +551,10 @@
   }
 
   function updateEnemyBar() { if (enemyHPFill) enemyHPFill.style.width = `${(enemy.hp/enemy.maxHp)*100}%`; }
-  function updatePlayerBar() { if (playerHPFill) playerHPFill.style.width = `${(player.hp/player.maxHp)*100}%`; }
-  function appendCombatLog(text) { if (!combatLog) return; combatLog.classList.remove('hidden'); const p=document.createElement('div'); p.textContent = `• ${text}`; p.style.fontFamily='"Press Start 2P", monospace'; p.style.fontSize='12px'; combatLog.appendChild(p); combatLog.scrollTop = combatLog.scrollHeight; }
+  function updatePlayerBar() { if (playerHPFill) { const pct = Math.max(0, Math.min(1, player.hp / player.maxHp)); playerHPFill.style.width = `${pct*100}%`; } }
+  function appendCombatLog(text) { if (!combatLog) return; combatLog.classList.remove('hidden'); const p=document.createElement('div'); p.textContent = `• ${text}`; p.style.fontFamily='"Press Start 2P", monospace'; p.style.fontSize='12px'; combatLog.appendChild(p); // limit lines
+    while (combatLog.children.length > 120) combatLog.removeChild(combatLog.firstChild);
+    combatLog.scrollTop = combatLog.scrollHeight; }
 
   // items that can appear on the battle field (pickups)
   let fieldItems = [];
@@ -452,7 +592,25 @@
       // enemy
       ctx.fillStyle='#fff'; ctx.font='48px serif'; ctx.fillText('👻', canvas.width/2-24, 110);
       // bullets
-      bullets.forEach(b=>{ b.x += b.vx; b.y += b.vy; if (b.y>canvas.height+80||b.x<-80||b.x>canvas.width+80) { b.x=Math.random()*canvas.width; b.y=-20; } ctx.beginPath(); ctx.fillStyle=b.color; ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill(); });
+      for (let idx=bullets.length-1; idx>=0; idx--) {
+        const b = bullets[idx];
+        b.x += b.vx; b.y += b.vy;
+        const dx = b.x - soul.x; const dy = b.y - soul.y; const d = Math.sqrt(dx*dx+dy*dy);
+        if (battlePhase==='attackpattern' && d < b.r + soul.size) {
+          // mark as hit for fight minigame
+          b._hit = true;
+          // if we're in a fight minigame (not enemy attackActive) then keep and let fightTick count it; otherwise, let startEnemyAttack handle damage
+          if (!attackActive) {
+            // remove visual bullet to avoid repeated collision
+            bullets.splice(idx,1);
+            continue;
+          }
+        }
+        if (b.y>canvas.height+120||b.x<-120||b.x>canvas.width+120) {
+          bullets.splice(idx,1); continue;
+        }
+        ctx.beginPath(); ctx.fillStyle=b._hit? '#ffff88' : b.color; ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill();
+      }
       // soul
       ctx.save(); ctx.translate(soul.x,soul.y); ctx.fillStyle='#ff6699'; drawHeart(ctx,0,0,soul.size); ctx.restore();
       // field items
@@ -476,30 +634,81 @@
   function updateSoulPosition(){ if (state==='battle' && battlePhase==='attackpattern') { if (keys['arrowleft']||keys['a']) soul.x-=soul.speed*2; if (keys['arrowright']||keys['d']) soul.x+=soul.speed*2; if (keys['arrowup']||keys['w']) soul.y-=soul.speed*2; if (keys['arrowdown']||keys['s']) soul.y+=soul.speed*2; const left=60,right=canvas.width-60,top=canvas.height-220,bottom=canvas.height-60; soul.x=Math.max(left,Math.min(right,soul.x)); soul.y=Math.max(top,Math.min(bottom,soul.y)); } else { soul.x += (canvas.width/2 - soul.x)*0.08; soul.y += ((canvas.height-140) - soul.y)*0.08; } requestAnimationFrame(updateSoulPosition); }
 
   function startBattleLoop(){ soul.x=canvas.width/2; soul.y=canvas.height-140; battlePhase='menu'; bullets=[]; appendCombatLog(`Battle vs ${enemy.name} starts!`); updateEnemyBar(); updatePlayerBar(); // spawn an item sometimes
-    if (Math.random() < 0.5) spawnFieldItem({ id:'snack', name:'Snack', heal:20 });
+    if (Math.random() < 0.6) {
+      const r = Math.random();
+      let pick;
+      if (r < 0.55) pick = { id:'snack', name:'Snack', heal:20 };
+      else if (r < 0.9) pick = { id:'bandage', name:'Bandage', heal:12 };
+      else pick = { id:'shield', name:'Shield', heal:0 };
+      spawnFieldItem(pick);
+    }
   }
 
-  function resetAll(){ player.hp=player.maxHp; player.exp=0; player.items=[{id:'snack',name:'Snack',heal:20,qty:2}]; encounters = JSON.parse(JSON.stringify(baseEncounters)); currentEncounterIndex=0; enemy=null; bullets=[]; if (combatLog) combatLog.innerHTML=''; currentDialogue=[]; dialogueIndex=0; killsCount=0; mercyCount=0; fieldItems=[]; setState('menu'); stopMusic(); }
+  function resetAll(){ player.hp=player.maxHp; player.exp=0; player.items=[{id:'snack',name:'Snack',heal:20,qty:2},{id:'shield',name:'Shield',heal:0,qty:0}]; encounters = JSON.parse(JSON.stringify(baseEncounters)); currentEncounterIndex=0; enemy=null; bullets=[]; if (combatLog) combatLog.innerHTML=''; currentDialogue=[]; dialogueIndex=0; killsCount=0; mercyCount=0; fieldItems=[]; setState('menu'); stopMusic(); }
 
   // Save / Load
-  function saveGame(){ const data = { player, encounters, currentEncounterIndex, killsCount, mercyCount, state, enemy, fieldItems }; try { localStorage.setItem('grim_save_v1', JSON.stringify(data)); } catch(e){ console.warn('Save failed',e); } }
-  function loadGame(){ try { const raw = localStorage.getItem('grim_save_v1'); if (!raw) { appendCombatLog('No save found.'); return; } const data = JSON.parse(raw); Object.assign(player, data.player); encounters = data.encounters; currentEncounterIndex = data.currentEncounterIndex; killsCount = data.killsCount; mercyCount = data.mercyCount; fieldItems = data.fieldItems || []; if (data.enemy) enemy = data.enemy; updatePlayerBar(); if (enemy) updateEnemyBar(); appendCombatLog('Loaded save.'); } catch(e){ console.warn('Load failed',e); appendCombatLog('Load failed.'); } }
+  function saveGame(){
+    try {
+      // serialize only plain data; for encounters keep id/hp/flags
+      const serialEnc = encounters.map(e => ({ id: e.id, hp: e.hp }));
+      const data = {
+        player: JSON.parse(JSON.stringify(player)),
+        encounters: serialEnc,
+        currentEncounterIndex, killsCount, mercyCount,
+        state, fieldItems: JSON.parse(JSON.stringify(fieldItems)), currentBranch, rebellion
+      };
+      localStorage.setItem('grim_save_v1', JSON.stringify(data));
+      appendCombatLog('Game saved.');
+      if (saveIndicator) { saveIndicator.style.display='inline-block'; setTimeout(()=>{ saveIndicator.style.display='none'; }, 1600); }
+    } catch (e) { console.warn('Save failed', e); appendCombatLog('Save failed.'); }
+  }
+  function loadGame(){
+    try {
+      const raw = localStorage.getItem('grim_save_v1');
+      if (!raw) { appendCombatLog('No save found.'); return; }
+      const data = JSON.parse(raw);
+      // restore player
+      Object.assign(player, JSON.parse(JSON.stringify(data.player)));
+      // reconstruct encounters by id
+      if (Array.isArray(data.encounters)) {
+        encounters = data.encounters.map(se => {
+          const be = findBaseEncounter(se.id);
+          if (!be) return null;
+          const copy = JSON.parse(JSON.stringify(be));
+          if (typeof se.hp === 'number') copy.hp = se.hp;
+          return copy;
+        }).filter(Boolean);
+      }
+      currentEncounterIndex = data.currentEncounterIndex || 0;
+      killsCount = data.killsCount || 0;
+      mercyCount = data.mercyCount || 0;
+      fieldItems = Array.isArray(data.fieldItems) ? JSON.parse(JSON.stringify(data.fieldItems)) : [];
+  currentBranch = data.currentBranch || 'start';
+  rebellion = data.rebellion || 0;
+      updatePlayerBar(); if (enemy) updateEnemyBar();
+      appendCombatLog('Loaded save.');
+    } catch (e) { console.warn('Load failed', e); appendCombatLog('Load failed.'); }
+  }
+
 
   // decide ending by route
   function decideEnding(){ // simple rules: genocide if kills >= full count, pacifist if kills===0 and mercyCount === totalEncounters, neutral otherwise
     const total = baseEncounters.length;
     if (killsCount >= total) { currentDialogue = story.endingGenocide.slice(); setState('ending'); dialogueIndex=0; }
-    else if (killsCount === 0 && mercyCount >= total) { currentDialogue = story.endingPacifist.slice(); setState('ending'); dialogueIndex=0; }
+    else if (killsCount === 0 && mercyCount >= total && rebellion < 2) { currentDialogue = story.endingPacifist.slice(); setState('ending'); dialogueIndex=0; }
     else { currentDialogue = story.endingNeutral.slice(); setState('ending'); dialogueIndex=0; }
   }
 
   // renderBattleMenu: small helper to ensure menus exist in DOM, otherwise just no-op
   function renderBattleMenu() {
-    // if your HTML has elements for acts/items/menu info, this ensures they're updated
-    if (menuInfo) menuInfo.textContent = '';
-    if (actsList) actsList.innerHTML = '';
-    if (itemsList) itemsList.innerHTML = '';
-    // by default, leave UI wiring to the existing DOM; this function can be expanded
+    // show helpful battle info in menu-info
+    if (menuInfo) {
+      const hpPct = enemy ? Math.round((enemy.hp/enemy.maxHp)*100) : 0;
+      menuInfo.textContent = enemy ? `${enemy.name} — HP: ${enemy.hp}/${enemy.maxHp} (${hpPct}%)` : 'Choose an action: FIGHT, ACT, ITEM or MERCY.';
+    }
+    if (actsList && actsList.innerHTML.trim()==='') actsList.innerHTML = '<div style="color:#666;font-size:12px">Press ACT to see your options.</div>';
+    if (itemsList && itemsList.innerHTML.trim()==='') itemsList.innerHTML = '<div style="color:#666;font-size:12px">Press ITEM to see and use items.</div>';
+    // keep menus ready; actual population happens in openActMenu/openItemMenu
   }
 
   // expose debug

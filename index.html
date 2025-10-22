@@ -50,10 +50,29 @@
             </div>
 
             <div id="combat-log" class="panel mini hidden"></div>
+
+            <!-- ACT / ITEM submenus populated by game.js -->
+            <div id="menu-sub" style="margin-top:10px;display:flex;gap:8px;">
+              <div id="acts-container" style="flex:1">
+                <div class="panel" style="padding:8px">
+                  <div id="menu-info" style="margin-bottom:6px;color:#333;font-size:12px"></div>
+                  <div id="acts-list" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+                </div>
+              </div>
+              <div id="items-container" style="width:220px">
+                <div class="panel" style="padding:8px">
+                  <div style="font-weight:700;margin-bottom:6px;font-family:'Press Start 2P',monospace">ITEMS</div>
+                  <div id="items-list" style="display:flex;flex-direction:column;gap:6px"></div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div id="hud" class="panel">
-            <div id="state-label">MENU</div>
+            <div style="display:flex;align-items:center;gap:12px">
+              <div id="state-label">MENU</div>
+              <div id="save-indicator" style="color:var(--muted);font-size:12px;display:none">Saved</div>
+            </div>
             <div id="controls-hint">Use mouse / tap to interact — Arrow keys to dodge during attacks</div>
           </div>
         </div>
@@ -67,6 +86,15 @@
     <footer>
       <button id="start-game" class="btn primary">Start</button>
       <button id="reset-game" class="btn">Reset</button>
+      <button id="save-game" class="btn">Save</button>
+      <button id="load-game" class="btn">Load</button>
+      <div id="debug-panel" style="display:flex;gap:6px;align-items:center;margin-left:12px">
+        <button id="dbg-enc-0" class="btn">Jump Lib</button>
+        <button id="dbg-enc-1" class="btn">Jump Shadow</button>
+        <button id="dbg-enc-2" class="btn">Jump Mia</button>
+        <button id="dbg-heal" class="btn">Heal</button>
+        <button id="dbg-add-item" class="btn">Give Snack</button>
+      </div>
     </footer>
   </div>
 

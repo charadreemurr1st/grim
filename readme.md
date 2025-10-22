@@ -8,11 +8,28 @@ What is included
 - game.js — core game logic: simple state machine (menu → intro/story → exploration → battle), small bullet-dodge "attack" phase, actions: FIGHT / ACT / ITEM / MERCY, and basic dialogue.
 - README.md — this file.
 
+New features in this iteration
+- ACT system expanded: more ACTs available per enemy (CHECK, friendly acts, comedic acts).
+- Fight minigame improved: collisions with the soul now register hits during the fight window.
+- Items: field pickups (click to pick up) and items that can be used from the ITEM menu (Snack, Bandage, Shield).
+- Save / Load: stored to localStorage; saves only data and reconstructs encounters on load.
+- Debug panel: quick jump buttons to test encounters and give items/HP.
+- Exploration choices: choose where to go; branching exploration.
+ - Branch consequences: a small 'rebellion' stat tracks skipping class and influences endings.
+
 How to run
 1. Open `index.html` in a modern browser (Chrome, Firefox, Edge).
 2. Click "Start" to play.
 3. Use the UI buttons to proceed through the story and to choose actions in battle.
 4. During enemy attack phases, use arrow keys or WASD to move the "soul" (heart) and dodge projectiles.
+
+Controls
+- Mouse / tap: interact with menu buttons, click items on the field to pick up.
+- Arrow keys or WASD: move the soul during attack phases.
+- P: quick save, O: quick load.
+
+Testing
+- Use the buttons in the footer (Debug panel) to jump to specific encounters and test functionality quickly.
 
 Notes and limitations
 - This is a lightweight, single-file demo, intentionally small to be easy to extend.
